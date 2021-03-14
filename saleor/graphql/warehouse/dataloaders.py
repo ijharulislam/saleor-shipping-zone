@@ -47,7 +47,7 @@ class AvailableQuantityByProductVariantIdAndShippingZoneCodeLoader(
     ) -> Iterable[Tuple[int, int]]:
         results = Stock.objects.filter(product_variant_id__in=variant_ids)
         if shipping_zone:
-            results.filter(warehouse__shipping_zones__slug=shipping_zone)
+            results.filter(warehouse__shipping_zones__name=shipping_zone)
         results = results.annotate_available_quantity()
         results = results.values_list(
             "product_variant_id", "warehouse__shipping_zones", "available_quantity"

@@ -268,7 +268,7 @@ def restock_order_lines(order):
     
     shipping_zone = order.get_shipping_zone()
     default_warehouse = Warehouse.objects.filter(
-        shipping_zones__slug=shipping_zone
+        shipping_zones__name=shipping_zone
     ).first()
 
     for line in order:

@@ -26,7 +26,7 @@ class WarehouseQueryset(models.QuerySet):
     def for_shipping_zone(self, shipping_zone: str):
         return (
             self.prefetch_data()
-            .filter(shipping_zones__slug=shipping_zone)
+            .filter(shipping_zones__name=shipping_zone)
             .order_by("pk")
         )
 
@@ -80,7 +80,7 @@ class StockQuerySet(models.QuerySet):
     def for_shipping_zone(self, shipping_zone: str):
         query_warehouse = models.Subquery(
             Warehouse.objects.filter(
-                shipping_zones__slug=shipping_zone
+                shipping_zones__name=shipping_zone
             ).values("pk")
         )
         return self.select_related("product_variant", "warehouse").filter(

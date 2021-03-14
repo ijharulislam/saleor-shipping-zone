@@ -339,7 +339,7 @@ class Order(ModelWithMetadata):
 
     def get_shipping_zone(self):
         if self.shipping_method and self.shipping_method.shipping_zone:
-            return self.shipping_method.shipping_zone.slug
+            return self.shipping_method.shipping_zone.name
 
 class OrderLineQueryset(models.QuerySet):
     def digital(self):
