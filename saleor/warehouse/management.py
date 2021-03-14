@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 @transaction.atomic
 def allocate_stock(
-    order_line: "OrderLine", country_code: str, quantity: int,
+    order_line: "OrderLine", shipping_zone: str, quantity: int,
 ):
     """Allocate stocks for given `order_line` in given country.
 
@@ -27,7 +27,7 @@ def allocate_stock(
     """
     stocks = (
         Stock.objects.select_for_update(of=("self",))
-        .get_variant_stocks_for_country(country_code, order_line.variant)
+        .get_variant_stocks_for_shipping_zone(shipping_zone, order_line.variant)
         .order_by("pk")
     )
 

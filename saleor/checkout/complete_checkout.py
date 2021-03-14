@@ -132,8 +132,8 @@ def _create_line_for_order(checkout_line: "CheckoutLine", discounts) -> OrderLin
     quantity = checkout_line.quantity
     variant = checkout_line.variant
     product = variant.product
-    country = checkout_line.checkout.get_country()
-    check_stock_quantity(variant, country, quantity)
+    shipping_zone = checkout_line.checkout.get_shipping_zone()
+    check_stock_quantity(variant, shipping_zone, quantity)
 
     product_name = str(product)
     variant_name = str(variant)
@@ -257,7 +257,7 @@ def _create_order(*, checkout: Checkout, order_data: dict, user: User) -> Order:
     for line in order_lines:  # type: OrderLine
         variant = line.variant
         if variant and variant.track_inventory:
-            allocate_stock(line, checkout.get_country(), line.quantity)
+            allocate_stock(line, checkout.get_shipping_zone(), line.quantity)
 
     # Add gift cards to the order
     for gift_card in checkout.gift_cards.select_for_update():

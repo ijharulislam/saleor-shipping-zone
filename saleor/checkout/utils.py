@@ -30,7 +30,7 @@ from ..giftcard.utils import (
 )
 from ..plugins.manager import get_plugins_manager
 from ..shipping.models import ShippingMethod
-from ..warehouse.availability import check_stock_quantity
+from ..warehouse.availability import check_stock_quantity, check_stock_quantity_for_country
 from . import AddressType
 from .models import Checkout, CheckoutLine
 
@@ -80,7 +80,7 @@ def check_variant_in_stock(
         )
 
     if new_quantity > 0 and check_quantity:
-        check_stock_quantity(variant, checkout.get_country(), new_quantity)
+        check_stock_quantity_for_country(variant, checkout.get_country(), new_quantity)
 
     return new_quantity, line
 

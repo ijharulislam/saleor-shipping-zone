@@ -6,12 +6,12 @@ from django.conf import settings
 from ...warehouse.models import Stock
 from ..core.dataloaders import DataLoader
 
-CountryCode = Optional[str]
-VariantIdAndCountryCode = Tuple[int, CountryCode]
+ShippingZone = Optional[str]
+VariantIdAndShippingZone = Tuple[int, ShippingZone]
 
 
-class AvailableQuantityByProductVariantIdAndCountryCodeLoader(
-    DataLoader[VariantIdAndCountryCode, int]
+class AvailableQuantityByProductVariantIdAndShippingZoneCodeLoader(
+    DataLoader[VariantIdAndShippingZone, int]
 ):
     """Calculates available variant quantity based on variant ID and country code.
 
@@ -26,27 +26,28 @@ class AvailableQuantityByProductVariantIdAndCountryCodeLoader(
         # Split the list of keys by country first. A typical query will only touch
         # a handful of unique countries but may access thousands of product variants
         # so it's cheaper to execute one query per country.
-        variants_by_country: DefaultDict[CountryCode, List[int]] = defaultdict(list)
-        for variant_id, country_code in keys:
-            variants_by_country[country_code].append(variant_id)
+        variants_by_shipping_zone: DefaultDict[ShippingZone, List[int]] = defaultdict(list)
+        for variant_id, shipping_zone in keys:
+            variants_by_shipping_zone[shipping_zone].append(variant_id)
 
         # For each country code execute a single query for all product variants.
-        quantity_by_variant_and_country: DefaultDict[
-            VariantIdAndCountryCode, int
+        quantity_by_variant_and_shipping_zone: DefaultDict[
+            VariantIdAndShippingZone, int
         ] = defaultdict(int)
-        for country_code, variant_ids in variants_by_country.items():
-            quantities = self.batch_load_country(country_code, variant_ids)
+        for shipping_zone, variant_ids in variants_by_shipping_zone.items():
+            quantities = self.batch_load_shipping_zone(shipping_zone, variant_ids)
             for variant_id, quantity in quantities:
-                quantity_by_variant_and_country[(variant_id, country_code)] = quantity
+                quantity_by_variant_and_shipping_zone[(
+                    variant_id, shipping_zone)] = quantity
 
-        return [quantity_by_variant_and_country[key] for key in keys]
+        return [quantity_by_variant_and_shipping_zone[key] for key in keys]
 
-    def batch_load_country(
-        self, country_code: CountryCode, variant_ids: Iterable[int]
+    def batch_load_shipping_zone(
+        self, shipping_zone: ShippingZone, variant_ids: Iterable[int]
     ) -> Iterable[Tuple[int, int]]:
         results = Stock.objects.filter(product_variant_id__in=variant_ids)
-        if country_code:
-            results.filter(warehouse__shipping_zones__countries__contains=country_code)
+        if shipping_zone:
+            results.filter(warehouse__shipping_zones__slug=shipping_zone)
         results = results.annotate_available_quantity()
         results = results.values_list(
             "product_variant_id", "warehouse__shipping_zones", "available_quantity"

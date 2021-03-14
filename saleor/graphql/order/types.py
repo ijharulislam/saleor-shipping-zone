@@ -501,8 +501,9 @@ class Order(CountableDjangoObjectType):
     def resolve_can_finalize(root: models.Order, _info):
         if root.status == OrderStatus.DRAFT:
             country = get_order_country(root)
+            shipping_zone = root.get_shipping_zone()
             try:
-                validate_draft_order(root, country)
+                validate_draft_order(root, shipping_zone)
             except ValidationError:
                 return False
         return True

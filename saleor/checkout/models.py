@@ -166,6 +166,10 @@ class Checkout(ModelWithMetadata):
             self.set_country(country_code, commit=True)
         return country_code
 
+    def get_shipping_zone(self):
+        if self.shipping_method and self.shipping_method.shipping_zone:
+            return self.shipping_method.shipping_zone.slug
+
 
 class CheckoutLine(models.Model):
     """A single checkout line.

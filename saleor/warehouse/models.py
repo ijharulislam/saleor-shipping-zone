@@ -23,6 +23,12 @@ class WarehouseQueryset(models.QuerySet):
             .order_by("pk")
         )
 
+    def for_shipping_zone(self, shipping_zone: str):
+        return (
+            self.prefetch_data()
+            .filter(shipping_zones__slug=shipping_zone)
+            .order_by("pk")
+        )
 
 class Warehouse(models.Model):
     id = models.UUIDField(default=uuid.uuid4, primary_key=True)
@@ -71,17 +77,35 @@ class StockQuerySet(models.QuerySet):
             warehouse__in=query_warehouse
         )
 
-    def get_variant_stocks_for_country(
-        self, country_code: str, product_variant: ProductVariant
+    def for_shipping_zone(self, shipping_zone: str):
+        query_warehouse = models.Subquery(
+            Warehouse.objects.filter(
+                shipping_zones__slug=shipping_zone
+            ).values("pk")
+        )
+        return self.select_related("product_variant", "warehouse").filter(
+            warehouse__in=query_warehouse
+        )
+
+    def get_variant_stocks_for_shipping_zone(
+        self, shipping_zone: str, product_variant: ProductVariant
     ):
         """Return the stock information about the a stock for a given country.
 
         Note it will raise a 'Stock.DoesNotExist' exception if no such stock is found.
         """
+        return self.for_shipping_zone(shipping_zone).filter(product_variant=product_variant)
+
+    def get_variant_stocks_for_country(
+        self, country_code: str, product_variant: ProductVariant
+    ):
+        """Return the stock information about the a stock for a given country.
+        Note it will raise a 'Stock.DoesNotExist' exception if no such stock is found.
+        """
         return self.for_country(country_code).filter(product_variant=product_variant)
 
-    def get_product_stocks_for_country(self, country_code: str, product: Product):
-        return self.for_country(country_code).filter(
+    def get_product_stocks_for_shipping_zone(self, shipping_zone: str, product: Product):
+        return self.for_shipping_zone(shipping_zone).filter(
             product_variant__product_id=product.pk
         )
 

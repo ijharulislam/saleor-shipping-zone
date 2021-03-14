@@ -92,7 +92,7 @@ def update_checkout_shipping_method_if_invalid(
         checkout.save(update_fields=["shipping_method", "last_change"])
 
 
-def check_lines_quantity(variants, quantities, country):
+def check_lines_quantity(variants, quantities, shipping_zone):
     """Check if stock is sufficient for each line in the list of dicts."""
     for variant, quantity in zip(variants, quantities):
         if quantity < 0:
@@ -115,9 +115,9 @@ def check_lines_quantity(variants, quantities, country):
                 }
             )
         try:
-            check_stock_quantity(variant, country, quantity)
+            check_stock_quantity(variant, shipping_zone, quantity)
         except InsufficientStock as e:
-            available_quantity = get_available_quantity(e.item, country)
+            available_quantity = get_available_quantity(e.item, shipping_zone)
             message = (
                 "Could not add item "
                 + "%(item_name)s. Only %(remaining)d remaining in stock."
@@ -200,7 +200,7 @@ class CheckoutCreate(ModelMutation, I18nMixin):
 
     @classmethod
     def process_checkout_lines(
-        cls, lines, country
+        cls, lines, shipping_zone
     ) -> Tuple[List[product_models.ProductVariant], List[int]]:
         variant_ids = [line.get("variant_id") for line in lines]
         variants = cls.get_nodes_or_error(
@@ -214,7 +214,7 @@ class CheckoutCreate(ModelMutation, I18nMixin):
         quantities = [line.get("quantity") for line in lines]
 
         validate_variants_available_for_purchase(variants)
-        check_lines_quantity(variants, quantities, country)
+        # check_lines_quantity(variants, quantities, shipping_zone)
 
         return variants, quantities
 
@@ -246,9 +246,10 @@ class CheckoutCreate(ModelMutation, I18nMixin):
             if shipping_address.country != country:
                 country = shipping_address.country
         cleaned_input["country"] = country
-
+            
         # Resolve and process the lines, retrieving the variants and quantities
         lines = data.pop("lines", None)
+
         if lines:
             (
                 cleaned_input["variants"],
@@ -370,7 +371,7 @@ class CheckoutLinesAdd(BaseMutation):
         variants = cls.get_nodes_or_error(variant_ids, "variant_id", ProductVariant)
         quantities = [line.get("quantity") for line in lines]
 
-        check_lines_quantity(variants, quantities, checkout.get_country())
+        check_lines_quantity(variants, quantities, checkout.get_shipping_zone())
         validate_variants_available_for_purchase(variants)
 
         if variants and quantities:
@@ -540,7 +541,7 @@ class CheckoutShippingAddressUpdate(BaseMutation, I18nMixin):
         error_type_field = "checkout_errors"
 
     @classmethod
-    def process_checkout_lines(cls, lines, country) -> None:
+    def process_checkout_lines(cls, lines, shipping_zone) -> None:
         variant_ids = [line.variant.id for line in lines]
         variants = list(
             product_models.ProductVariant.objects.filter(
@@ -549,7 +550,7 @@ class CheckoutShippingAddressUpdate(BaseMutation, I18nMixin):
         )
         quantities = [line.quantity for line in lines]
 
-        check_lines_quantity(variants, quantities, country)
+        check_lines_quantity(variants, quantities, shipping_zone)
 
     @classmethod
     def perform_mutation(cls, _root, info, checkout_id, shipping_address):
@@ -591,10 +592,12 @@ class CheckoutShippingAddressUpdate(BaseMutation, I18nMixin):
             if shipping_address.country != country:
                 country = shipping_address.country
         checkout.set_country(country, commit=True)
+        
+        shipping_zone = checkout.get_shipping_zone()
 
         # Resolve and process the lines, validating variants quantities
         if lines:
-            cls.process_checkout_lines(lines, country)
+            cls.process_checkout_lines(lines, shipping_zone)
 
         update_checkout_shipping_method_if_invalid(
             checkout, lines, info.context.discounts

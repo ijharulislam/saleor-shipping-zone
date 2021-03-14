@@ -44,7 +44,7 @@ from ...translations.types import (
 from ...utils import get_database_id, get_user_or_app_from_context
 from ...utils.filters import reporting_period_to_date
 from ...warehouse.dataloaders import (
-    AvailableQuantityByProductVariantIdAndCountryCodeLoader,
+    AvailableQuantityByProductVariantIdAndShippingZoneCodeLoader,
 )
 from ...warehouse.types import Stock
 from ..dataloaders import (
@@ -181,6 +181,11 @@ class ProductPricingInfo(BasePricingInfo):
 class ProductVariant(CountableDjangoObjectType):
     quantity = graphene.Int(
         required=True,
+        shipping_zone=graphene.Argument(
+            graphene.String,
+            description="Shipping Zone Name",
+            required=False,
+        ),
         description="Quantity of a product available for sale.",
         deprecation_reason=(
             "Use the stock field instead. This field will be removed after 2020-07-31."
@@ -188,6 +193,11 @@ class ProductVariant(CountableDjangoObjectType):
     )
     quantity_allocated = graphene.Int(
         required=False,
+        shipping_zone=graphene.Argument(
+            graphene.String,
+            description="Shipping Zone Name.",
+            required=False,
+        ),
         description="Quantity allocated for orders.",
         deprecation_reason=(
             "Use the stock field instead. This field will be removed after 2020-07-31."
@@ -195,6 +205,11 @@ class ProductVariant(CountableDjangoObjectType):
     )
     stock_quantity = graphene.Int(
         required=True,
+        shipping_zone=graphene.Argument(
+            graphene.String,
+            description="Shipping Zone Name",
+            required=False,
+        ),
         description="Quantity of a product available for sale.",
         deprecation_reason=(
             "Use the quantityAvailable field instead. "
@@ -218,6 +233,11 @@ class ProductVariant(CountableDjangoObjectType):
         ),
     )
     is_available = graphene.Boolean(
+        shipping_zone=graphene.Argument(
+            graphene.String,
+            description="Shipping Zone Name",
+            required=False,
+        ),
         description="Whether the variant is in stock and visible or not.",
         deprecation_reason=(
             "Use the stock field instead. This field will be removed after 2020-07-31."
@@ -253,23 +273,21 @@ class ProductVariant(CountableDjangoObjectType):
     stocks = graphene.Field(
         graphene.List(Stock),
         description="Stocks for the product variant.",
-        country_code=graphene.Argument(
-            CountryCodeEnum,
-            description="Two-letter ISO 3166-1 country code.",
+        shipping_zone=graphene.Argument(
+            graphene.String,
+            description="Shipping Zone Name.",
             required=False,
         ),
-    )
+    )    
     quantity_available = graphene.Int(
         required=True,
         description="Quantity of a product available for sale in one checkout.",
-        country_code=graphene.Argument(
-            CountryCodeEnum,
+        shipping_zone=graphene.Argument(
+            graphene.String,
             description=(
-                "Two-letter ISO 3166-1 country code. When provided, the exact quantity "
-                "from a warehouse operating in shipping zones that contain this "
-                "country will be returned. Otherwise, it will return the maximum "
-                "quantity from all shipping zones."
+                "Shipping Zone Name."
             ),
+            required=False,
         ),
     )
 
@@ -285,21 +303,21 @@ class ProductVariant(CountableDjangoObjectType):
     @one_of_permissions_required(
         [ProductPermissions.MANAGE_PRODUCTS, OrderPermissions.MANAGE_ORDERS]
     )
-    def resolve_stocks(root: models.ProductVariant, info, country_code=None):
-        if not country_code:
+    def resolve_stocks(root: models.ProductVariant, info, shipping_zone=None):
+        if not shipping_zone:
             return root.stocks.annotate_available_quantity()
-        return root.stocks.for_country(country_code).annotate_available_quantity()
+        return root.stocks.for_shipping_zone(shipping_zone).annotate_available_quantity()
 
     @staticmethod
     def resolve_quantity_available(
-        root: models.ProductVariant, info, country_code=None
+        root: models.ProductVariant, info, shipping_zone=None
     ):
         if not root.track_inventory:
             return settings.MAX_CHECKOUT_LINE_QUANTITY
 
-        return AvailableQuantityByProductVariantIdAndCountryCodeLoader(
+        return AvailableQuantityByProductVariantIdAndShippingZoneCodeLoader(
             info.context
-        ).load((root.id, country_code))
+        ).load((root.id, shipping_zone))
 
     @staticmethod
     @permission_required(ProductPermissions.MANAGE_PRODUCTS)
@@ -307,13 +325,13 @@ class ProductVariant(CountableDjangoObjectType):
         return getattr(root, "digital_content", None)
 
     @staticmethod
-    def resolve_stock_quantity(root: models.ProductVariant, info):
+    def resolve_stock_quantity(root: models.ProductVariant, info, shipping_zone=None):
         if not root.track_inventory:
             return settings.MAX_CHECKOUT_LINE_QUANTITY
 
-        return AvailableQuantityByProductVariantIdAndCountryCodeLoader(
+        return AvailableQuantityByProductVariantIdAndShippingZoneCodeLoader(
             info.context
-        ).load((root.id, info.context.country))
+        ).load((root.id, shipping_zone))
 
     @staticmethod
     def resolve_attributes(root: models.ProductVariant, info):
@@ -369,7 +387,7 @@ class ProductVariant(CountableDjangoObjectType):
         return ProductByIdLoader(info.context).load(root.product_id)
 
     @staticmethod
-    def resolve_is_available(root: models.ProductVariant, info):
+    def resolve_is_available(root: models.ProductVariant, info, shipping_zone=None):
         if not root.track_inventory:
             return True
 
@@ -377,15 +395,15 @@ class ProductVariant(CountableDjangoObjectType):
             return available_quantity > 0
 
         return (
-            AvailableQuantityByProductVariantIdAndCountryCodeLoader(info.context)
-            .load((root.id, info.context.country))
+            AvailableQuantityByProductVariantIdAndShippingZoneCodeLoader(info.context)
+            .load((root.id, shipping_zone))
             .then(is_variant_in_stock)
         )
 
     @staticmethod
     @permission_required(ProductPermissions.MANAGE_PRODUCTS)
-    def resolve_quantity(root: models.ProductVariant, info):
-        return get_available_quantity(root, info.context.country)
+    def resolve_quantity(root: models.ProductVariant, info, shipping_zone):
+        return get_available_quantity(root, shipping_zone)
 
     @staticmethod
     @permission_required(ProductPermissions.MANAGE_PRODUCTS)
@@ -396,9 +414,8 @@ class ProductVariant(CountableDjangoObjectType):
 
     @staticmethod
     @permission_required(ProductPermissions.MANAGE_PRODUCTS)
-    def resolve_quantity_allocated(root: models.ProductVariant, info):
-        country = info.context.country
-        return get_quantity_allocated(root, country)
+    def resolve_quantity_allocated(root: models.ProductVariant, info, shipping_zone=None):
+        return get_quantity_allocated(root, shipping_zone)
 
     @staticmethod
     @permission_required(ProductPermissions.MANAGE_PRODUCTS)
@@ -457,6 +474,11 @@ class Product(CountableDjangoObjectType):
         ),
     )
     is_available = graphene.Boolean(
+        shipping_zone=graphene.Argument(
+            graphene.String,
+            description="Shipping Zone Name",
+            required=False,
+        ),
         description="Whether the product is in stock and visible or not."
     )
     minimal_variant_price = graphene.Field(
@@ -593,9 +615,8 @@ class Product(CountableDjangoObjectType):
         )
 
     @staticmethod
-    def resolve_is_available(root: models.Product, info):
-        country = info.context.country
-        in_stock = is_product_in_stock(root, country)
+    def resolve_is_available(root: models.Product, info, shipping_zone=None):
+        in_stock = is_product_in_stock(root, shipping_zone)
         return root.is_visible and in_stock
 
     @staticmethod

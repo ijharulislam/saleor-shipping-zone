@@ -265,9 +265,10 @@ def delete_order_line(line):
 
 def restock_order_lines(order):
     """Return ordered products to corresponding stocks."""
-    country = get_order_country(order)
+    
+    shipping_zone = order.get_shipping_zone()
     default_warehouse = Warehouse.objects.filter(
-        shipping_zones__countries__contains=country
+        shipping_zones__slug=shipping_zone
     ).first()
 
     for line in order:

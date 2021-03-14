@@ -36,7 +36,7 @@ def validate_shipping_method(order):
         )
 
 
-def validate_order_lines(order, country):
+def validate_order_lines(order, shipping_zone):
     for line in order:
         if line.variant is None:
             raise ValidationError(
@@ -49,7 +49,7 @@ def validate_order_lines(order, country):
             )
         if line.variant.track_inventory:
             try:
-                check_stock_quantity(line.variant, country, line.quantity)
+                check_stock_quantity(line.variant, shipping_zone, line.quantity)
             except InsufficientStock as exc:
                 raise ValidationError(
                     {
@@ -87,7 +87,7 @@ def validate_product_is_available_for_purchase(order):
             )
 
 
-def validate_draft_order(order, country):
+def validate_draft_order(order, shipping_zone):
     """Check if the given order contains the proper data.
 
     - Has proper customer data,
@@ -101,6 +101,6 @@ def validate_draft_order(order, country):
     if order.is_shipping_required():
         validate_shipping_method(order)
     validate_total_quantity(order)
-    validate_order_lines(order, country)
+    validate_order_lines(order, shipping_zone)
     validate_product_is_published(order)
     validate_product_is_available_for_purchase(order)

@@ -29,14 +29,15 @@ def _get_available_quantity(stocks: StockQuerySet) -> int:
     return max(total_quantity - quantity_allocated, 0)
 
 
-def check_stock_quantity(variant: "ProductVariant", country_code: str, quantity: int):
+def check_stock_quantity(variant: "ProductVariant", shipping_zone: str, quantity: int):
     """Validate if there is stock available for given variant in given country.
 
     If so - returns None. If there is less stock then required raise InsufficientStock
     exception.
     """
     if variant.track_inventory:
-        stocks = Stock.objects.get_variant_stocks_for_country(country_code, variant)
+        stocks = Stock.objects.get_variant_stocks_for_shipping_zone(
+            shipping_zone, variant)
         if not stocks:
             raise InsufficientStock(variant)
 
@@ -44,16 +45,32 @@ def check_stock_quantity(variant: "ProductVariant", country_code: str, quantity:
             raise InsufficientStock(variant)
 
 
-def get_available_quantity(variant: "ProductVariant", country_code: str) -> int:
+def check_stock_quantity_for_country(variant: "ProductVariant", country: str, quantity: int):
+    """Validate if there is stock available for given variant in given country.
+
+    If so - returns None. If there is less stock then required raise InsufficientStock
+    exception.
+    """
+    if variant.track_inventory:
+        stocks = stocks = Stock.objects.get_variant_stocks_for_country(
+            country, variant)
+        if not stocks:
+            raise InsufficientStock(variant)
+
+        if quantity > _get_available_quantity(stocks):
+            raise InsufficientStock(variant)
+
+
+def get_available_quantity(variant: "ProductVariant", shipping_zone: str) -> int:
     """Return available quantity for given product in given country."""
-    stocks = Stock.objects.get_variant_stocks_for_country(country_code, variant)
+    stocks = Stock.objects.get_variant_stocks_for_shipping_zone(shipping_zone, variant)
     if not stocks:
         return 0
     return _get_available_quantity(stocks)
 
 
 def get_available_quantity_for_customer(
-    variant: "ProductVariant", country_code: str = None
+    variant: "ProductVariant", shipping_zone: str = None
 ) -> int:
     """Return maximum checkout line quantity.
 
@@ -69,8 +86,8 @@ def get_available_quantity_for_customer(
         return settings.MAX_CHECKOUT_LINE_QUANTITY
 
     stocks = Stock.objects.filter(product_variant=variant)
-    if country_code:
-        stocks = stocks.for_country(country_code)
+    if shipping_zone:
+        stocks = stocks.for_shipping_zone(shipping_zone)
     stocks = stocks.annotate_available_quantity()
     stocks = stocks.values_list("warehouse__shipping_zones", "available_quantity")
 
@@ -87,31 +104,31 @@ def get_available_quantity_for_customer(
     return min(max_available_quantity, settings.MAX_CHECKOUT_LINE_QUANTITY)
 
 
-def get_quantity_allocated(variant: "ProductVariant", country_code: str) -> int:
-    stocks = Stock.objects.get_variant_stocks_for_country(country_code, variant)
+def get_quantity_allocated(variant: "ProductVariant", shipping_zone: str) -> int:
+    stocks = Stock.objects.get_variant_stocks_for_shipping_zone(shipping_zone, variant)
     if not stocks:
         return 0
     return _get_quantity_allocated(stocks)
 
 
-def is_variant_in_stock(variant: "ProductVariant", country_code: str) -> bool:
+def is_variant_in_stock(variant: "ProductVariant", shipping_zone: str) -> bool:
     """Check if variant is available in given country."""
-    quantity_available = get_available_quantity_for_customer(variant, country_code)
+    quantity_available = get_available_quantity_for_customer(variant, shipping_zone)
     return quantity_available > 0
 
 
-def is_product_in_stock(product: "Product", country_code: str) -> bool:
+def is_product_in_stock(product: "Product", shipping_zone: str) -> bool:
     """Check if there is any variant of given product available in given country."""
-    stocks = Stock.objects.get_product_stocks_for_country(
-        country_code, product
+    stocks = Stock.objects.get_product_stocks_for_shipping_zone(
+        shipping_zone, product
     ).annotate_available_quantity()
     return any(stocks.values_list("available_quantity", flat=True))
 
 
-def are_all_product_variants_in_stock(product: "Product", country_code: str) -> bool:
+def are_all_product_variants_in_stock(product: "Product", shipping_zone: str) -> bool:
     """Check if all variants of given product are available in given country."""
-    stocks = Stock.objects.get_product_stocks_for_country(
-        country_code, product
+    stocks = Stock.objects.get_product_stocks_for_shipping_zone(
+        shipping_zone, product
     ).annotate_available_quantity()
     stocks = stocks.values_list("available_quantity", "product_variant_id").all()
     are_all_available = all([elem[0] for elem in stocks])
